@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -30,10 +30,16 @@ const themes = [
 ];
 
 export default function Home() {
-  const { user, profile, loading, updateProfile, signOut } = useAuth();
+  const { user, profile, loading, updateProfile } = useAuth();
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user && profile?.age_track) {
+      router.push("/learn");
+    }
+  }, [loading, user, profile, router]);
 
   function handleSelect(themeId) {
     setSelected(themeId);
@@ -47,7 +53,6 @@ export default function Home() {
     setSaving(false);
   }
 
-  // Loading state
   if (loading) {
     return (
       <div
@@ -66,7 +71,6 @@ export default function Home() {
     );
   }
 
-  // Not logged in — show welcome screen
   if (!user) {
     return (
       <div
@@ -150,7 +154,6 @@ export default function Home() {
     );
   }
 
-  // Logged in but no age track — show selector
   if (profile && !profile.age_track) {
     return (
       <div
@@ -274,50 +277,17 @@ export default function Home() {
     );
   }
 
-  // Logged in with age track — main app (temporary placeholder)
-  if (profile) {
-    document.documentElement.setAttribute("data-theme", profile.age_track);
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "24px",
-          gap: "24px",
-          background: "var(--color-bg)",
-        }}
-      >
-        <h1
-          style={{
-            fontSize: "28px",
-            fontWeight: 700,
-            color: "var(--color-text)",
-          }}
-        >
-          Welcome, {profile.name || profile.email}!
-        </h1>
-        <p style={{ color: "var(--color-text-light)" }}>
-          Age track: {profile.age_track} · Level: {profile.current_level} · XP: {profile.xp} · Tokens: {profile.tokens}
-        </p>
-        <button
-          onClick={signOut}
-          style={{
-            padding: "12px 32px",
-            borderRadius: "var(--radius-full)",
-            border: "2px solid var(--color-error)",
-            background: "transparent",
-            color: "var(--color-error)",
-            fontSize: "15px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Sign Out
-        </button>
-      </div>
-    );
-  }
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--color-bg)",
+      }}
+    >
+      <p style={{ color: "var(--color-text-light)" }}>Loading...</p>
+    </div>
+  );
 }
