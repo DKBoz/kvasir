@@ -1,26 +1,164 @@
 @import "tailwindcss";
 
+/* ============================================
+   KVASIR THEME SYSTEM
+   Three age-track palettes + shared tokens
+   Applied via data-theme attribute on <html>
+   ============================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Shared layout tokens */
+  --nav-height: 64px;
+  --bottom-nav-height: 72px;
+  --content-max-width: 480px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  /* Default to adults theme */
+  --color-primary: #6C5CE7;
+  --color-primary-light: #A29BFE;
+  --color-primary-dark: #4A3CB5;
+  --color-secondary: #00CEC9;
+  --color-accent: #FD79A8;
+  --color-bg: #FAFAFA;
+  --color-bg-card: #FFFFFF;
+  --color-bg-nav: #FFFFFF;
+  --color-text: #2D3436;
+  --color-text-light: #636E72;
+  --color-text-muted: #B2BEC3;
+  --color-border: #E5E8EB;
+  --color-success: #00B894;
+  --color-warning: #FDCB6E;
+  --color-error: #FF6B6B;
+  --color-xp: #FDCB6E;
+  --color-token: #00CEC9;
+  --font-heading: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-size-base: 16px;
+  --font-weight-heading: 600;
 }
 
+/* KIDS THEME — Bright, warm, rounded */
+[data-theme="kids"] {
+  --color-primary: #FF6B6B;
+  --color-primary-light: #FF8E8E;
+  --color-primary-dark: #E55555;
+  --color-secondary: #4ECDC4;
+  --color-accent: #FFE66D;
+  --color-bg: #FFF8F0;
+  --color-bg-card: #FFFFFF;
+  --color-bg-nav: #FFFFFF;
+  --color-text: #2D3436;
+  --color-text-light: #636E72;
+  --color-text-muted: #B2BEC3;
+  --color-border: #FFE0D0;
+  --color-success: #26DE81;
+  --color-warning: #FFD93D;
+  --color-error: #FF6B6B;
+  --color-xp: #FFD93D;
+  --color-token: #4ECDC4;
+  --font-heading: 'Baloo 2', cursive;
+  --font-body: 'Nunito', sans-serif;
+  --font-size-base: 18px;
+  --font-weight-heading: 700;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+}
+
+/* TEENS THEME — Vibrant, high-contrast, modern */
+[data-theme="teens"] {
+  --color-primary: #6C5CE7;
+  --color-primary-light: #A29BFE;
+  --color-primary-dark: #5A4BD1;
+  --color-secondary: #00D2D3;
+  --color-accent: #FF9FF3;
+  --color-bg: #F8F7FF;
+  --color-bg-card: #FFFFFF;
+  --color-bg-nav: #FFFFFF;
+  --color-text: #1A1A2E;
+  --color-text-light: #4A4A68;
+  --color-text-muted: #9E9EB8;
+  --color-border: #E8E6F0;
+  --color-success: #1DD1A1;
+  --color-warning: #FECA57;
+  --color-error: #FF6B6B;
+  --color-xp: #FECA57;
+  --color-token: #00D2D3;
+  --font-heading: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-size-base: 16px;
+  --font-weight-heading: 700;
+}
+
+/* ADULTS THEME — Muted bold, sophisticated */
+[data-theme="adults"] {
+  --color-primary: #6C5CE7;
+  --color-primary-light: #A29BFE;
+  --color-primary-dark: #4A3CB5;
+  --color-secondary: #00CEC9;
+  --color-accent: #FD79A8;
+  --color-bg: #FAFAFA;
+  --color-bg-card: #FFFFFF;
+  --color-bg-nav: #FFFFFF;
+  --color-text: #2D3436;
+  --color-text-light: #636E72;
+  --color-text-muted: #B2BEC3;
+  --color-border: #E5E8EB;
+  --color-success: #00B894;
+  --color-warning: #FDCB6E;
+  --color-error: #FF6B6B;
+  --color-xp: #FDCB6E;
+  --color-token: #00CEC9;
+  --font-heading: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-size-base: 16px;
+  --font-weight-heading: 600;
+}
+
+/* Register theme colors with Tailwind v4 */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-primary: var(--color-primary);
+  --color-primary-light: var(--color-primary-light);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-bg: var(--color-bg);
+  --color-bg-card: var(--color-bg-card);
+  --color-bg-nav: var(--color-bg-nav);
+  --color-text: var(--color-text);
+  --color-text-light: var(--color-text-light);
+  --color-text-muted: var(--color-text-muted);
+  --color-border: var(--color-border);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
+  --color-xp: var(--color-xp);
+  --color-token: var(--color-token);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Base styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
 }

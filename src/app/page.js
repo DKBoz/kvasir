@@ -1,65 +1,163 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+
+const themes = [
+  {
+    id: "kids",
+    label: "Kids",
+    ages: "5–10",
+    emoji: "🎨",
+    description: "Fun and colorful",
+  },
+  {
+    id: "teens",
+    label: "Teens",
+    ages: "11–17",
+    emoji: "⚡",
+    description: "Bold and energetic",
+  },
+  {
+    id: "adults",
+    label: "Adults",
+    ages: "18+",
+    emoji: "🎯",
+    description: "Clean and focused",
+  },
+];
 
 export default function Home() {
+  const [selected, setSelected] = useState(null);
+
+  function handleSelect(themeId) {
+    setSelected(themeId);
+    document.documentElement.setAttribute("data-theme", themeId);
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+        gap: "40px",
+        background: "var(--color-bg)",
+        transition: "background 0.3s ease",
+      }}
+    >
+      <div style={{ textAlign: "center" }}>
+        <h1
+          style={{
+            fontSize: "32px",
+            fontWeight: "var(--font-weight-heading)",
+            color: "var(--color-text)",
+            fontFamily: "var(--font-heading)",
+            marginBottom: "8px",
+          }}
+        >
+          Welcome to Kvasir
+        </h1>
+        <p
+          style={{
+            fontSize: "16px",
+            color: "var(--color-text-light)",
+          }}
+        >
+          Choose your path to start learning English
+        </p>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          width: "100%",
+          maxWidth: "360px",
+        }}
+      >
+        {themes.map((theme) => (
+          <button
+            key={theme.id}
+            onClick={() => handleSelect(theme.id)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+              padding: "20px",
+              borderRadius: "var(--radius-md)",
+              border:
+                selected === theme.id
+                  ? "2px solid var(--color-primary)"
+                  : "2px solid var(--color-border)",
+              background:
+                selected === theme.id
+                  ? "var(--color-bg-card)"
+                  : "var(--color-bg-card)",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              boxShadow:
+                selected === theme.id
+                  ? "0 4px 12px rgba(0,0,0,0.1)"
+                  : "none",
+              textAlign: "left",
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            <span style={{ fontSize: "32px" }}>{theme.emoji}</span>
+            <div>
+              <div
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 600,
+                  color: "var(--color-text)",
+                }}
+              >
+                {theme.label}
+                <span
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 400,
+                    color: "var(--color-text-muted)",
+                    marginLeft: "8px",
+                  }}
+                >
+                  {theme.ages}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: "14px",
+                  color: "var(--color-text-light)",
+                  marginTop: "2px",
+                }}
+              >
+                {theme.description}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {selected && (
+        <button
+          style={{
+            padding: "16px 48px",
+            borderRadius: "var(--radius-full)",
+            border: "none",
+            background: "var(--color-primary)",
+            color: "#FFFFFF",
+            fontSize: "18px",
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+          }}
+        >
+          Continue
+        </button>
+      )}
     </div>
   );
 }
