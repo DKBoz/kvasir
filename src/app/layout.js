@@ -1,4 +1,5 @@
 import { Inter, Nunito, Baloo_2 } from "next/font/google";
+import { AuthProvider } from "@/context/AuthContext";
 import "./globals.css";
 
 const inter = Inter({
@@ -27,7 +28,9 @@ export default function RootLayout({ children }) {
       lang="en"
       className={`${inter.variable} ${nunito.variable} ${baloo2.variable} h-full`}
     >
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
