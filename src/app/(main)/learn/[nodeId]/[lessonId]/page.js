@@ -22,6 +22,17 @@ export default function LessonPage() {
   const [presentIndex, setPresentIndex] = useState(0);
   const [completed, setCompleted] = useState(false);
 
+  function speak(text) {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.85;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
   useEffect(() => {
     if (lessonId) fetchLesson();
   }, [lessonId]);
@@ -54,10 +65,8 @@ export default function LessonPage() {
 
   const stages = lesson.content?.stages || [];
   const currentStage = stages[stageIndex];
-
-  // Calculate total progress across all stages
   const totalStages = stages.length;
-  const progressPercent = ((stageIndex) / totalStages) * 100;
+  const progressPercent = (stageIndex / totalStages) * 100;
 
   // ==========================================
   // COMPLETION SCREEN
@@ -162,7 +171,9 @@ export default function LessonPage() {
 
     if (stage.type === "present") {
       if (presentIndex < stage.items.length - 1) {
+        const nextItem = stage.items[presentIndex + 1];
         setPresentIndex(presentIndex + 1);
+        speak(nextItem.audio || `${nextItem.letter} is for ${nextItem.word}`);
         return;
       }
       setPresentIndex(0);
@@ -173,7 +184,9 @@ export default function LessonPage() {
 
     if (stage.type === "examples") {
       if (presentIndex < stage.items.length - 1) {
+        const nextItem = stage.items[presentIndex + 1];
         setPresentIndex(presentIndex + 1);
+        speak(nextItem.prompt);
         return;
       }
       setPresentIndex(0);
@@ -182,18 +195,18 @@ export default function LessonPage() {
       return;
     }
 
-    // For guided, free, checkpoint
     const exercises = stage.exercises || [];
     if (exerciseIndex < exercises.length - 1) {
+      const nextEx = exercises[exerciseIndex + 1];
       setExerciseIndex(exerciseIndex + 1);
+      if (nextEx.question) speak(nextEx.question);
+      else if (nextEx.sentence) speak(nextEx.sentence);
     } else {
-      // Move to next stage
       if (stageIndex < stages.length - 1) {
         setStageIndex(stageIndex + 1);
         setExerciseIndex(0);
         setPresentIndex(0);
       } else {
-        // Lesson complete — save progress
         saveLessonComplete();
       }
     }
@@ -201,8 +214,8 @@ export default function LessonPage() {
 
   async function saveLessonComplete() {
     setCompleted(true);
+    speak("Lesson complete! Great job!");
 
-    // Save progress
     await supabase.from("user_progress").upsert(
       {
         user_id: profile.id,
@@ -217,7 +230,6 @@ export default function LessonPage() {
       { onConflict: "user_id,lesson_id" }
     );
 
-    // Update profile XP and tokens
     await updateProfile({
       xp: (profile.xp || 0) + lesson.xp_reward,
       tokens: (profile.tokens || 0) + lesson.token_reward,
@@ -235,8 +247,10 @@ export default function LessonPage() {
     if (optionIndex === correct) {
       setIsCorrect(true);
       setScore((s) => s + 1);
+      speak("Correct!");
     } else {
       setIsCorrect(false);
+      speak("Not quite. The answer is " + exercise.options[correct]);
     }
   }
 
@@ -247,8 +261,10 @@ export default function LessonPage() {
     if (typed.trim().toLowerCase() === answer.toLowerCase()) {
       setIsCorrect(true);
       setScore((s) => s + 1);
+      speak("Correct!");
     } else {
       setIsCorrect(false);
+      speak("Not quite. The answer is " + answer);
     }
   }
 
@@ -294,20 +310,30 @@ export default function LessonPage() {
           >
             {item.word}
           </div>
-          <p
-            style={{
-              fontSize: "16px",
-              color: "var(--color-text-light)",
-            }}
-          >
+          <p style={{ fontSize: "16px", color: "var(--color-text-light)" }}>
             {item.audio}
           </p>
-          <p
+
+          {/* Speaker button */}
+          <button
+            onClick={() => speak(item.audio || `${item.letter} is for ${item.word}`)}
             style={{
-              fontSize: "13px",
-              color: "var(--color-text-muted)",
+              width: "56px",
+              height: "56px",
+              borderRadius: "50%",
+              border: "2px solid var(--color-primary)",
+              background: "var(--color-bg-card)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "24px",
             }}
           >
+            🔊
+          </button>
+
+          <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
             {presentIndex + 1} of {currentStage.items.length}
           </p>
         </div>
@@ -354,12 +380,27 @@ export default function LessonPage() {
           >
             {item.answer}
           </div>
-          <p
+
+          {/* Speaker button */}
+          <button
+            onClick={() => speak(item.prompt + " " + item.answer)}
             style={{
-              fontSize: "13px",
-              color: "var(--color-text-muted)",
+              width: "56px",
+              height: "56px",
+              borderRadius: "50%",
+              border: "2px solid var(--color-primary)",
+              background: "var(--color-bg-card)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "24px",
             }}
           >
+            🔊
+          </button>
+
+          <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
             {presentIndex + 1} of {currentStage.items.length}
           </p>
         </div>
@@ -384,6 +425,32 @@ export default function LessonPage() {
         onClose={() => router.push(`/learn/${nodeId}`)}
       >
         <div style={{ padding: "24px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "16px",
+            }}
+          >
+            <button
+              onClick={() => speak(exercise.question)}
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "50%",
+                border: "2px solid var(--color-primary)",
+                background: "var(--color-bg-card)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "20px",
+              }}
+            >
+              🔊
+            </button>
+          </div>
+
           <p
             style={{
               fontSize: "20px",
@@ -464,6 +531,32 @@ export default function LessonPage() {
         onClose={() => router.push(`/learn/${nodeId}`)}
       >
         <div style={{ padding: "24px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "16px",
+            }}
+          >
+            <button
+              onClick={() => speak(exercise.sentence.replace("___", exercise.answer))}
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "50%",
+                border: "2px solid var(--color-primary)",
+                background: "var(--color-bg-card)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "20px",
+              }}
+            >
+              🔊
+            </button>
+          </div>
+
           <p
             style={{
               fontSize: "20px",
@@ -544,7 +637,7 @@ export default function LessonPage() {
     );
   }
 
-  // TAP CORRECT (simplified as multiple select)
+  // TAP CORRECT
   if (exercise.type === "tap_correct") {
     return (
       <LessonShell
@@ -554,6 +647,32 @@ export default function LessonPage() {
         onClose={() => router.push(`/learn/${nodeId}`)}
       >
         <div style={{ padding: "24px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "16px",
+            }}
+          >
+            <button
+              onClick={() => speak(exercise.question)}
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "50%",
+                border: "2px solid var(--color-primary)",
+                background: "var(--color-bg-card)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "20px",
+              }}
+            >
+              🔊
+            </button>
+          </div>
+
           <p
             style={{
               fontSize: "20px",
@@ -639,7 +758,12 @@ export default function LessonPage() {
                     correct.length === sel.length &&
                     correct.every((c) => sel.includes(c));
                   setIsCorrect(allCorrect);
-                  if (allCorrect) setScore((s) => s + 1);
+                  if (allCorrect) {
+                    setScore((s) => s + 1);
+                    speak("Correct!");
+                  } else {
+                    speak("Not quite.");
+                  }
                 }}
                 style={{
                   padding: "12px 32px",
@@ -658,7 +782,10 @@ export default function LessonPage() {
           )}
 
           {answered && (
-            <FeedbackBar isCorrect={isCorrect} correctAnswer={exercise.correct.map((i) => exercise.options[i]).join(", ")} />
+            <FeedbackBar
+              isCorrect={isCorrect}
+              correctAnswer={exercise.correct.map((i) => exercise.options[i]).join(", ")}
+            />
           )}
         </div>
         {answered && <BottomButton onClick={handleNext} label="Continue" />}
@@ -666,7 +793,7 @@ export default function LessonPage() {
     );
   }
 
-  // DRAG MATCH (simplified as visual matching for now)
+  // DRAG MATCH
   if (exercise.type === "drag_match") {
     return (
       <LessonShell
@@ -696,8 +823,9 @@ export default function LessonPage() {
             }}
           >
             {exercise.pairs.map((pair, i) => (
-              <div
+              <button
                 key={i}
+                onClick={() => speak(`${pair[0]} is for ${pair[1]}`)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -707,6 +835,7 @@ export default function LessonPage() {
                   borderRadius: "var(--radius-md)",
                   background: "var(--color-bg-card)",
                   border: "1px solid var(--color-border)",
+                  cursor: "pointer",
                 }}
               >
                 <span
@@ -720,7 +849,8 @@ export default function LessonPage() {
                 </span>
                 <span style={{ color: "var(--color-text-muted)" }}>→</span>
                 <span style={{ fontSize: "32px" }}>{pair[1]}</span>
-              </div>
+                <span style={{ fontSize: "16px", marginLeft: "8px" }}>🔊</span>
+              </button>
             ))}
           </div>
         </div>
@@ -746,7 +876,6 @@ function LessonShell({ title, progress, stageLabel, onClose, children }) {
         background: "var(--color-bg)",
       }}
     >
-      {/* Top bar */}
       <div
         style={{
           display: "flex",
@@ -802,7 +931,6 @@ function LessonShell({ title, progress, stageLabel, onClose, children }) {
         </span>
       </div>
 
-      {/* Content */}
       <div style={{ flex: 1 }}>{children}</div>
     </div>
   );
