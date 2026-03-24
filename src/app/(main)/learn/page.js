@@ -3,11 +3,13 @@
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LearnPage() {
   const { profile } = useAuth();
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     if (profile?.age_track && profile?.current_level) {
@@ -152,7 +154,7 @@ export default function LearnPage() {
 
               {/* Node */}
               <button
-                onClick={() => {}}
+                onClick={() => router.push(`/learn/${node.id}`)}
                 style={{
                   display: "flex",
                   alignItems: "center",
