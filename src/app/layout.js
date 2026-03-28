@@ -1,6 +1,7 @@
 import { Inter, Nunito, Baloo_2 } from "next/font/google";
 import { AuthProvider } from "@/context/AuthContext";
 import "./globals.css";
+import "./animations.css";
 
 const inter = Inter({
   subsets: ["latin"],
