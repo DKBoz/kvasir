@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import VisualScene from "@/components/VisualScene";
 
@@ -24,6 +24,22 @@ export default function LessonPage() {
   const [completed, setCompleted] = useState(false);
   const [sceneKey, setSceneKey] = useState(0);
 
+  // Reveal sequence state
+  const [revealStep, setRevealStep] = useState(0);
+  // 0 = image only, 1 = image + audio played, 2 = image + word revealed + audio again
+  const [showL1, setShowL1] = useState(false);
+
+  // Second chance state
+  const [attempts, setAttempts] = useState(0);
+  const [showingCorrect, setShowingCorrect] = useState(false);
+
+  // Checkpoint retry state
+  const [failedItems, setFailedItems] = useState([]);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryIndex, setRetryIndex] = useState(0);
+
+  const timerRef = useRef(null);
+
   function speak(text) {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
@@ -37,6 +53,9 @@ export default function LessonPage() {
 
   useEffect(() => {
     if (lessonId) fetchLesson();
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [lessonId]);
 
   async function fetchLesson() {
@@ -47,6 +66,38 @@ export default function LessonPage() {
       .single();
     setLesson(data);
     setLoading(false);
+  }
+
+  // Start reveal sequence when present/examples stage item changes
+  useEffect(() => {
+    if (!lesson) return;
+    const stages = lesson.content?.stages || [];
+    const stage = stages[stageIndex];
+    if (!stage) return;
+
+    if (stage.type === "present" && stage.format === "visual") {
+      startRevealSequence(stage.items[presentIndex]);
+    }
+  }, [stageIndex, presentIndex, lesson]);
+
+  function startRevealSequence(item) {
+    if (!item) return;
+    setRevealStep(0);
+    setShowL1(false);
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    // Step 1: Play audio after 1 second
+    timerRef.current = setTimeout(() => {
+      setRevealStep(1);
+      speak(item.audio || item.target);
+
+      // Step 2: Reveal word + play audio again after another 1.5 seconds
+      timerRef.current = setTimeout(() => {
+        setRevealStep(2);
+        speak(item.audio || item.target);
+      }, 1500);
+    }, 1000);
   }
 
   if (loading || !lesson) {
@@ -88,19 +139,12 @@ export default function LessonPage() {
         }}
       >
         <div style={{ fontSize: "64px" }}>🎉</div>
-        <h1
-          style={{
-            fontSize: "28px",
-            fontWeight: 700,
-            color: "var(--color-text)",
-          }}
-        >
+        <h1 style={{ fontSize: "28px", fontWeight: 700, color: "var(--color-text)" }}>
           Lesson Complete!
         </h1>
         <p style={{ color: "var(--color-text-light)", textAlign: "center" }}>
           {score} / {totalQuestions}
         </p>
-
         <div style={{ display: "flex", gap: "24px", marginTop: "16px" }}>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: "24px", fontWeight: 700, color: "var(--color-xp)" }}>
@@ -115,7 +159,6 @@ export default function LessonPage() {
             <div style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>Tokens</div>
           </div>
         </div>
-
         <button
           onClick={() => router.push(`/learn/${nodeId}`)}
           style={{
@@ -139,26 +182,26 @@ export default function LessonPage() {
   if (!currentStage) return null;
 
   // ==========================================
-  // HANDLE MOVING TO NEXT
+  // NAVIGATION HELPERS
   // ==========================================
-  function handleNext() {
+  function resetExerciseState() {
     setSelected(null);
     setAnswered(false);
     setIsCorrect(false);
     setTyped("");
+    setAttempts(0);
+    setShowingCorrect(false);
+    setShowL1(false);
+  }
 
+  function handleNext() {
+    resetExerciseState();
     const stage = stages[stageIndex];
 
     if (stage.type === "present") {
       if (presentIndex < stage.items.length - 1) {
-        const nextItem = stage.items[presentIndex + 1];
         setPresentIndex(presentIndex + 1);
         setSceneKey((k) => k + 1);
-        if (stage.format === "visual") {
-          speak(nextItem.audio || nextItem.target);
-        } else {
-          speak(nextItem.audio || `${nextItem.letter} is for ${nextItem.word}`);
-        }
         return;
       }
       setPresentIndex(0);
@@ -173,11 +216,7 @@ export default function LessonPage() {
         const nextItem = stage.items[presentIndex + 1];
         setPresentIndex(presentIndex + 1);
         setSceneKey((k) => k + 1);
-        if (stage.format === "visual") {
-          speak(nextItem.audio || nextItem.answer);
-        } else {
-          speak(nextItem.prompt);
-        }
+        speak(nextItem.audio || nextItem.answer);
         return;
       }
       setPresentIndex(0);
@@ -187,6 +226,7 @@ export default function LessonPage() {
       return;
     }
 
+    // Exercise stages
     const exercises = stage.exercises || [];
     if (exerciseIndex < exercises.length - 1) {
       setExerciseIndex(exerciseIndex + 1);
@@ -198,6 +238,30 @@ export default function LessonPage() {
         setPresentIndex(0);
         setSceneKey((k) => k + 1);
       } else {
+        // Check if checkpoint needs retry
+        if (currentStage.type === "checkpoint" && failedItems.length > 0 && !isRetrying) {
+          setIsRetrying(true);
+          setRetryIndex(0);
+          resetExerciseState();
+        } else {
+          saveLessonComplete();
+        }
+      }
+    }
+  }
+
+  function handleCheckpointNext() {
+    resetExerciseState();
+    if (retryIndex < failedItems.length - 1) {
+      setRetryIndex(retryIndex + 1);
+    } else {
+      // Check if there are still failed items from this retry round
+      const stillFailed = failedItems.filter((item) => !item.passed);
+      if (stillFailed.length > 0) {
+        setFailedItems(stillFailed.map((f) => ({ ...f, passed: false })));
+        setRetryIndex(0);
+        resetExerciseState();
+      } else {
         saveLessonComplete();
       }
     }
@@ -205,7 +269,7 @@ export default function LessonPage() {
 
   async function saveLessonComplete() {
     setCompleted(true);
-    speak("Lesson complete! Great job!");
+    speak("Lesson complete!");
 
     await supabase.from("user_progress").upsert(
       {
@@ -228,58 +292,106 @@ export default function LessonPage() {
   }
 
   // ==========================================
-  // HANDLE ANSWERS
+  // ANSWER HANDLERS WITH SECOND CHANCE
   // ==========================================
-  function handleMultipleChoice(optionIndex, correct, correctLabel) {
-    if (answered) return;
+  function handleMultipleChoice(optionIndex, correct, exercise) {
+    if (answered || showingCorrect) return;
+
     setSelected(optionIndex);
-    setAnswered(true);
-    setTotalQuestions((t) => t + 1);
+
     if (optionIndex === correct) {
+      setAnswered(true);
       setIsCorrect(true);
+      setTotalQuestions((t) => t + 1);
       setScore((s) => s + 1);
-      speak("Correct!");
+      speak(exercise.options[correct]);
+
+      // Track checkpoint pass
+      if (currentStage.type === "checkpoint" && isRetrying) {
+        const updated = [...failedItems];
+        updated[retryIndex] = { ...updated[retryIndex], passed: true };
+        setFailedItems(updated);
+      }
     } else {
-      setIsCorrect(false);
-      speak(correctLabel || "Not quite.");
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+
+      if (newAttempts === 1) {
+        // First wrong — shake and reset after a moment
+        setTimeout(() => {
+          setSelected(null);
+        }, 600);
+      } else {
+        // Second wrong — show correct answer
+        setShowingCorrect(true);
+        speak(exercise.options[correct]);
+        setTotalQuestions((t) => t + 1);
+
+        // Track checkpoint failure
+        if (currentStage.type === "checkpoint" && !isRetrying) {
+          setFailedItems((prev) => [...prev, { exercise, index: exerciseIndex, passed: false }]);
+        }
+
+        // After showing correct, allow one more try
+        setTimeout(() => {
+          setShowingCorrect(false);
+          setSelected(null);
+          setAttempts(0);
+          // Now they get a third attempt (fresh)
+          setAnswered(false);
+          setIsCorrect(false);
+        }, 2500);
+      }
     }
   }
 
-  function handleFillBlank(answer) {
-    if (answered) return;
-    setAnswered(true);
-    setTotalQuestions((t) => t + 1);
-    if (typed.trim().toLowerCase() === answer.toLowerCase()) {
+  function handleFillBlank(answer, exercise) {
+    if (answered || showingCorrect) return;
+
+    const isRight = typed.trim().toLowerCase() === answer.toLowerCase();
+
+    if (isRight) {
+      setAnswered(true);
       setIsCorrect(true);
+      setTotalQuestions((t) => t + 1);
       setScore((s) => s + 1);
-      speak("Correct!");
-    } else {
-      setIsCorrect(false);
       speak(answer);
+
+      if (currentStage.type === "checkpoint" && isRetrying) {
+        const updated = [...failedItems];
+        updated[retryIndex] = { ...updated[retryIndex], passed: true };
+        setFailedItems(updated);
+      }
+    } else {
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+
+      if (newAttempts === 1) {
+        // First wrong — clear input, let them try again
+        setTyped("");
+      } else {
+        // Second wrong — show correct answer
+        setShowingCorrect(true);
+        speak(answer);
+        setTotalQuestions((t) => t + 1);
+
+        if (currentStage.type === "checkpoint" && !isRetrying) {
+          setFailedItems((prev) => [...prev, { exercise, index: exerciseIndex, passed: false }]);
+        }
+
+        setTimeout(() => {
+          setShowingCorrect(false);
+          setTyped("");
+          setAttempts(0);
+          setAnswered(false);
+          setIsCorrect(false);
+        }, 2500);
+      }
     }
   }
 
   // ==========================================
-  // L1 HINT COMPONENT
-  // ==========================================
-  function L1Hint({ item }) {
-    if (!item?.hint_l1?.tr) return null;
-    return (
-      <p
-        style={{
-          fontSize: "14px",
-          color: "var(--color-text-muted)",
-          fontStyle: "italic",
-          textAlign: "center",
-        }}
-      >
-        {item.hint_l1.tr}
-      </p>
-    );
-  }
-
-  // ==========================================
-  // RENDER: VISUAL PRESENT STAGE
+  // RENDER: VISUAL PRESENT STAGE (with reveal sequence)
   // ==========================================
   if (currentStage.type === "present" && currentStage.format === "visual") {
     const item = currentStage.items[presentIndex];
@@ -299,23 +411,145 @@ export default function LessonPage() {
             padding: "24px",
           }}
         >
+          {/* Image/Scene — always visible */}
           <VisualScene key={sceneKey} scene={item.scene} size="large" />
 
+          {/* Written word — only after step 2 */}
           <div
             style={{
               fontSize: "36px",
               fontWeight: 700,
               color: "var(--color-primary)",
               textAlign: "center",
+              opacity: revealStep >= 2 ? 1 : 0,
+              transform: revealStep >= 2 ? "translateY(0)" : "translateY(10px)",
+              transition: "all 0.5s ease",
+              minHeight: "50px",
             }}
           >
             {item.target}
           </div>
 
-          <L1Hint item={item} />
+          {/* L1 hint — only when help button tapped */}
+          {showL1 && item.hint_l1?.tr && (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-text-muted)",
+                fontStyle: "italic",
+                textAlign: "center",
+                animation: "fadeIn 0.3s ease",
+              }}
+            >
+              {item.hint_l1.tr}
+            </p>
+          )}
+
+          {/* Controls row */}
+          <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+            {/* Speaker button — available after reveal */}
+            {revealStep >= 1 && (
+              <button
+                onClick={() => speak(item.audio || item.target)}
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  border: "2px solid var(--color-primary)",
+                  background: "var(--color-bg-card)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "22px",
+                }}
+              >
+                🔊
+              </button>
+            )}
+
+            {/* Help button for L1 hint */}
+            {item.hint_l1?.tr && (
+              <button
+                onClick={() => setShowL1(!showL1)}
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  border: "2px solid var(--color-border)",
+                  background: showL1 ? "var(--color-primary-light)" : "var(--color-bg-card)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  color: showL1 ? "#FFFFFF" : "var(--color-text-muted)",
+                }}
+              >
+                ?
+              </button>
+            )}
+          </div>
+
+          <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+            {presentIndex + 1} / {currentStage.items.length}
+          </p>
+        </div>
+        {revealStep >= 2 && <BottomButton onClick={handleNext} label="Next" />}
+      </LessonShell>
+    );
+  }
+
+  // ==========================================
+  // RENDER: ORIGINAL PRESENT STAGE (non-visual, for alphabet/numbers)
+  // ==========================================
+  if (currentStage.type === "present") {
+    const item = currentStage.items[presentIndex];
+    return (
+      <LessonShell
+        title={currentStage.title}
+        progress={progressPercent}
+        stageLabel="Present"
+        onClose={() => router.push(`/learn/${nodeId}`)}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "24px",
+            padding: "40px 24px",
+          }}
+        >
+          <div style={{ fontSize: "80px" }}>{item.image}</div>
+          <div
+            style={{
+              fontSize: "48px",
+              fontWeight: 700,
+              color: "var(--color-primary)",
+            }}
+          >
+            {item.letter}
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--color-text)" }}>
+            {item.word}
+          </div>
+
+          {item.hint_l1?.tr && (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-text-muted)",
+                fontStyle: "italic",
+              }}
+            >
+              {item.hint_l1.tr}
+            </p>
+          )}
 
           <button
-            onClick={() => speak(item.audio || item.target)}
+            onClick={() => speak(item.audio || `${item.letter} is for ${item.word}`)}
             style={{
               width: "56px",
               height: "56px",
@@ -381,80 +615,20 @@ export default function LessonPage() {
             {item.answer}
           </div>
 
-          <L1Hint item={item} />
+          {item.hint_l1?.tr && (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-text-muted)",
+                fontStyle: "italic",
+              }}
+            >
+              {item.hint_l1.tr}
+            </p>
+          )}
 
           <button
             onClick={() => speak(item.audio || item.answer)}
-            style={{
-              width: "56px",
-              height: "56px",
-              borderRadius: "50%",
-              border: "2px solid var(--color-primary)",
-              background: "var(--color-bg-card)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "24px",
-            }}
-          >
-            🔊
-          </button>
-
-          <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-            {presentIndex + 1} / {currentStage.items.length}
-          </p>
-        </div>
-        <BottomButton onClick={handleNext} label="Next" />
-      </LessonShell>
-    );
-  }
-
-  // ==========================================
-  // RENDER: ORIGINAL PRESENT STAGE (non-visual)
-  // ==========================================
-  if (currentStage.type === "present") {
-    const item = currentStage.items[presentIndex];
-    return (
-      <LessonShell
-        title={currentStage.title}
-        progress={progressPercent}
-        stageLabel="Present"
-        onClose={() => router.push(`/learn/${nodeId}`)}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "24px",
-            padding: "40px 24px",
-          }}
-        >
-          <div style={{ fontSize: "80px" }}>{item.image}</div>
-          <div
-            style={{
-              fontSize: "48px",
-              fontWeight: 700,
-              color: "var(--color-primary)",
-            }}
-          >
-            {item.letter}
-          </div>
-          <div
-            style={{
-              fontSize: "24px",
-              fontWeight: 600,
-              color: "var(--color-text)",
-            }}
-          >
-            {item.word}
-          </div>
-
-          <L1Hint item={item} />
-
-          <button
-            onClick={() => speak(item.audio || `${item.letter} is for ${item.word}`)}
             style={{
               width: "56px",
               height: "56px",
@@ -521,7 +695,17 @@ export default function LessonPage() {
             {item.answer}
           </div>
 
-          <L1Hint item={item} />
+          {item.hint_l1?.tr && (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-text-muted)",
+                fontStyle: "italic",
+              }}
+            >
+              {item.hint_l1.tr}
+            </p>
+          )}
 
           <button
             onClick={() => speak(item.prompt + " " + item.answer)}
@@ -553,8 +737,17 @@ export default function LessonPage() {
   // ==========================================
   // EXERCISE STAGES (guided, free, checkpoint)
   // ==========================================
-  const exercises = currentStage.exercises || [];
-  const exercise = exercises[exerciseIndex];
+  let exercise;
+  let currentNext;
+
+  if (isRetrying && currentStage.type === "checkpoint") {
+    exercise = failedItems[retryIndex]?.exercise;
+    currentNext = handleCheckpointNext;
+  } else {
+    const exercises = currentStage.exercises || [];
+    exercise = exercises[exerciseIndex];
+    currentNext = handleNext;
+  }
 
   if (!exercise) return null;
 
@@ -563,10 +756,15 @@ export default function LessonPage() {
       ? "Practice"
       : currentStage.type === "free"
       ? "Apply"
+      : isRetrying
+      ? "Retry"
       : "Checkpoint";
 
   // MULTIPLE CHOICE
   if (exercise.type === "multiple_choice") {
+    const optionCount = exercise.options_count || exercise.options.length;
+    const visibleOptions = exercise.options.slice(0, optionCount);
+
     return (
       <LessonShell
         title={currentStage.title}
@@ -575,6 +773,7 @@ export default function LessonPage() {
         onClose={() => router.push(`/learn/${nodeId}`)}
       >
         <div style={{ padding: "24px" }}>
+          {/* Visual prompt */}
           {exercise.question_image && (
             <div
               style={{
@@ -591,16 +790,13 @@ export default function LessonPage() {
             </div>
           )}
 
+          {/* Audio button */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
             <button
               onClick={() => {
-                if (exercise.audio) {
-                  speak(exercise.audio);
-                } else if (exercise.question_image) {
-                  speak("Which one?");
-                } else {
-                  speak(exercise.question);
-                }
+                if (exercise.audio) speak(exercise.audio);
+                else if (exercise.question_image) speak("Which one?");
+                else speak(exercise.question);
               }}
               style={{
                 width: "44px",
@@ -619,7 +815,8 @@ export default function LessonPage() {
             </button>
           </div>
 
-          {(!exercise.question_image || exercise.question.length > 20) && (
+          {/* Question text */}
+          {exercise.question && (!exercise.question_image || exercise.question.length > 20) && (
             <p
               style={{
                 fontSize: "20px",
@@ -633,47 +830,57 @@ export default function LessonPage() {
             </p>
           )}
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px",
-            }}
-          >
-            {exercise.options.map((option, i) => {
+          {/* Attempt indicator */}
+          {attempts === 1 && !showingCorrect && (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-warning)",
+                textAlign: "center",
+                marginBottom: "12px",
+                fontWeight: 600,
+              }}
+            >
+              Try again!
+            </p>
+          )}
+
+          {/* Options */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {visibleOptions.map((option, i) => {
               let bg = "var(--color-bg-card)";
               let border = "var(--color-border)";
+              let textColor = "var(--color-text)";
 
-              if (answered) {
+              if (answered && isCorrect && i === exercise.correct) {
+                bg = "var(--color-success)";
+                border = "var(--color-success)";
+                textColor = "#FFFFFF";
+              } else if (showingCorrect) {
                 if (i === exercise.correct) {
                   bg = "var(--color-success)";
                   border = "var(--color-success)";
-                } else if (i === selected && !isCorrect) {
+                  textColor = "#FFFFFF";
+                } else if (i === selected) {
                   bg = "var(--color-error)";
                   border = "var(--color-error)";
+                  textColor = "#FFFFFF";
                 }
-              } else if (i === selected) {
-                border = "var(--color-primary)";
               }
 
               return (
                 <button
                   key={i}
-                  onClick={() =>
-                    handleMultipleChoice(i, exercise.correct, exercise.options[exercise.correct])
-                  }
+                  onClick={() => handleMultipleChoice(i, exercise.correct, exercise)}
                   style={{
                     padding: "16px 20px",
                     borderRadius: "var(--radius-md)",
                     border: `2px solid ${border}`,
                     background: bg,
-                    cursor: answered ? "default" : "pointer",
+                    cursor: answered || showingCorrect ? "default" : "pointer",
                     fontSize: "18px",
                     fontWeight: 500,
-                    color:
-                      answered && (i === exercise.correct || (i === selected && !isCorrect))
-                        ? "#FFFFFF"
-                        : "var(--color-text)",
+                    color: textColor,
                     textAlign: "center",
                     transition: "all 0.2s ease",
                   }}
@@ -684,11 +891,43 @@ export default function LessonPage() {
             })}
           </div>
 
-          {answered && (
-            <FeedbackBar isCorrect={isCorrect} correctAnswer={exercise.options[exercise.correct]} />
+          {/* Correct feedback */}
+          {answered && isCorrect && (
+            <div
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-success)",
+                color: "#FFFFFF",
+                textAlign: "center",
+                fontSize: "16px",
+                fontWeight: 700,
+              }}
+            >
+              ✓
+            </div>
+          )}
+
+          {/* Showing correct answer after 2 fails */}
+          {showingCorrect && (
+            <div
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-error)",
+                color: "#FFFFFF",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: "18px", fontWeight: 700 }}>
+                {exercise.options[exercise.correct]}
+              </div>
+            </div>
           )}
         </div>
-        {answered && <BottomButton onClick={handleNext} label="Continue" />}
+        {answered && isCorrect && <BottomButton onClick={currentNext} label="Continue" />}
       </LessonShell>
     );
   }
@@ -751,28 +990,36 @@ export default function LessonPage() {
             {exercise.sentence}
           </p>
 
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              justifyContent: "center",
-              marginBottom: "24px",
-            }}
-          >
+          {/* Attempt indicator */}
+          {attempts === 1 && !showingCorrect && (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-warning)",
+                textAlign: "center",
+                marginBottom: "12px",
+                fontWeight: 600,
+              }}
+            >
+              Try again!
+            </p>
+          )}
+
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", marginBottom: "24px" }}>
             <input
               type="text"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              disabled={answered}
+              disabled={answered || showingCorrect}
               placeholder="?"
               autoFocus
               style={{
                 padding: "14px 20px",
                 borderRadius: "var(--radius-md)",
                 border: answered
-                  ? isCorrect
-                    ? "2px solid var(--color-success)"
-                    : "2px solid var(--color-error)"
+                  ? "2px solid var(--color-success)"
+                  : showingCorrect
+                  ? "2px solid var(--color-error)"
                   : "2px solid var(--color-border)",
                 background: "var(--color-bg-card)",
                 fontSize: "24px",
@@ -783,17 +1030,17 @@ export default function LessonPage() {
                 width: "200px",
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !answered && typed.trim()) {
-                  handleFillBlank(exercise.answer);
+                if (e.key === "Enter" && !answered && !showingCorrect && typed.trim()) {
+                  handleFillBlank(exercise.answer, exercise);
                 }
               }}
             />
           </div>
 
-          {!answered && typed.trim() && (
+          {!answered && !showingCorrect && typed.trim() && (
             <div style={{ display: "flex", justifyContent: "center" }}>
               <button
-                onClick={() => handleFillBlank(exercise.answer)}
+                onClick={() => handleFillBlank(exercise.answer, exercise)}
                 style={{
                   padding: "12px 32px",
                   borderRadius: "var(--radius-full)",
@@ -810,9 +1057,41 @@ export default function LessonPage() {
             </div>
           )}
 
-          {answered && <FeedbackBar isCorrect={isCorrect} correctAnswer={exercise.answer} />}
+          {answered && isCorrect && (
+            <div
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-success)",
+                color: "#FFFFFF",
+                textAlign: "center",
+                fontSize: "16px",
+                fontWeight: 700,
+              }}
+            >
+              ✓
+            </div>
+          )}
+
+          {showingCorrect && (
+            <div
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-error)",
+                color: "#FFFFFF",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: "18px", fontWeight: 700 }}>
+                {exercise.answer}
+              </div>
+            </div>
+          )}
         </div>
-        {answered && <BottomButton onClick={handleNext} label="Continue" />}
+        {answered && isCorrect && <BottomButton onClick={currentNext} label="Continue" />}
       </LessonShell>
     );
   }
@@ -859,14 +1138,7 @@ export default function LessonPage() {
             {exercise.question}
           </p>
 
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "12px",
-              justifyContent: "center",
-            }}
-          >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", justifyContent: "center" }}>
             {exercise.options.map((option, i) => {
               const isSelected = selected?.includes(i);
               const shouldBeSelected = exercise.correct.includes(i);
@@ -907,10 +1179,7 @@ export default function LessonPage() {
                     cursor: answered ? "default" : "pointer",
                     fontSize: "18px",
                     fontWeight: 500,
-                    color:
-                      answered && (shouldBeSelected || isSelected)
-                        ? "#FFFFFF"
-                        : "var(--color-text)",
+                    color: answered && (shouldBeSelected || isSelected) ? "#FFFFFF" : "var(--color-text)",
                     transition: "all 0.2s ease",
                   }}
                 >
@@ -955,13 +1224,22 @@ export default function LessonPage() {
           )}
 
           {answered && (
-            <FeedbackBar
-              isCorrect={isCorrect}
-              correctAnswer={exercise.correct.map((i) => exercise.options[i]).join(", ")}
-            />
+            <div
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "var(--radius-md)",
+                background: isCorrect ? "var(--color-success)" : "var(--color-error)",
+                color: "#FFFFFF",
+                textAlign: "center",
+                fontWeight: 700,
+              }}
+            >
+              {isCorrect ? "✓" : exercise.correct.map((i) => exercise.options[i]).join(", ")}
+            </div>
           )}
         </div>
-        {answered && <BottomButton onClick={handleNext} label="Continue" />}
+        {answered && <BottomButton onClick={currentNext} label="Continue" />}
       </LessonShell>
     );
   }
@@ -976,13 +1254,7 @@ export default function LessonPage() {
         onClose={() => router.push(`/learn/${nodeId}`)}
       >
         <div style={{ padding: "24px" }}>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px",
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {exercise.pairs.map((pair, i) => (
               <button
                 key={i}
@@ -999,13 +1271,7 @@ export default function LessonPage() {
                   cursor: "pointer",
                 }}
               >
-                <span
-                  style={{
-                    fontSize: "28px",
-                    fontWeight: 700,
-                    color: "var(--color-primary)",
-                  }}
-                >
+                <span style={{ fontSize: "28px", fontWeight: 700, color: "var(--color-primary)" }}>
                   {pair[0]}
                 </span>
                 <span style={{ color: "var(--color-text-muted)" }}>→</span>
@@ -1015,7 +1281,144 @@ export default function LessonPage() {
             ))}
           </div>
         </div>
-        <BottomButton onClick={handleNext} label="I Got It!" />
+        <BottomButton onClick={currentNext} label="I Got It!" />
+      </LessonShell>
+    );
+  }
+
+  // LISTEN AND PICK (new exercise type for Free Practice)
+  if (exercise.type === "listen_pick") {
+    return (
+      <LessonShell
+        title={currentStage.title}
+        progress={progressPercent}
+        stageLabel={stageLabel}
+        onClose={() => router.push(`/learn/${nodeId}`)}
+      >
+        <div style={{ padding: "24px" }}>
+          <p
+            style={{
+              fontSize: "18px",
+              color: "var(--color-text-light)",
+              textAlign: "center",
+              marginBottom: "24px",
+            }}
+          >
+            🎧
+          </p>
+
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "32px" }}>
+            <button
+              onClick={() => speak(exercise.audio)}
+              style={{
+                width: "72px",
+                height: "72px",
+                borderRadius: "50%",
+                border: "3px solid var(--color-primary)",
+                background: "var(--color-bg-card)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "32px",
+              }}
+            >
+              🔊
+            </button>
+          </div>
+
+          {attempts === 1 && !showingCorrect && (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-warning)",
+                textAlign: "center",
+                marginBottom: "12px",
+                fontWeight: 600,
+              }}
+            >
+              Try again!
+            </p>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {exercise.options.map((option, i) => {
+              let bg = "var(--color-bg-card)";
+              let border = "var(--color-border)";
+              let textColor = "var(--color-text)";
+
+              if (answered && isCorrect && i === exercise.correct) {
+                bg = "var(--color-success)";
+                border = "var(--color-success)";
+                textColor = "#FFFFFF";
+              } else if (showingCorrect) {
+                if (i === exercise.correct) {
+                  bg = "var(--color-success)";
+                  border = "var(--color-success)";
+                  textColor = "#FFFFFF";
+                } else if (i === selected) {
+                  bg = "var(--color-error)";
+                  border = "var(--color-error)";
+                  textColor = "#FFFFFF";
+                }
+              }
+
+              return (
+                <button
+                  key={i}
+                  onClick={() => handleMultipleChoice(i, exercise.correct, exercise)}
+                  style={{
+                    padding: "16px 20px",
+                    borderRadius: "var(--radius-md)",
+                    border: `2px solid ${border}`,
+                    background: bg,
+                    cursor: answered || showingCorrect ? "default" : "pointer",
+                    fontSize: "18px",
+                    fontWeight: 500,
+                    color: textColor,
+                    textAlign: "center",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  {option}
+                </button>
+              );
+            })}
+          </div>
+
+          {answered && isCorrect && (
+            <div
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-success)",
+                color: "#FFFFFF",
+                textAlign: "center",
+                fontWeight: 700,
+              }}
+            >
+              ✓
+            </div>
+          )}
+
+          {showingCorrect && (
+            <div
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-error)",
+                color: "#FFFFFF",
+                textAlign: "center",
+                fontWeight: 700,
+              }}
+            >
+              {exercise.options[exercise.correct]}
+            </div>
+          )}
+        </div>
+        {answered && isCorrect && <BottomButton onClick={currentNext} label="Continue" />}
       </LessonShell>
     );
   }
@@ -1091,7 +1494,6 @@ function LessonShell({ title, progress, stageLabel, onClose, children }) {
           {stageLabel}
         </span>
       </div>
-
       <div style={{ flex: 1 }}>{children}</div>
     </div>
   );
@@ -1123,30 +1525,6 @@ function BottomButton({ onClick, label }) {
       >
         {label}
       </button>
-    </div>
-  );
-}
-
-function FeedbackBar({ isCorrect, correctAnswer }) {
-  return (
-    <div
-      style={{
-        marginTop: "24px",
-        padding: "16px 20px",
-        borderRadius: "var(--radius-md)",
-        background: isCorrect ? "var(--color-success)" : "var(--color-error)",
-        color: "#FFFFFF",
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: "16px", fontWeight: 700 }}>
-        {isCorrect ? "✓" : "✗"}
-      </div>
-      {!isCorrect && (
-        <div style={{ fontSize: "18px", marginTop: "4px", fontWeight: 600 }}>
-          {correctAnswer}
-        </div>
-      )}
     </div>
   );
 }
