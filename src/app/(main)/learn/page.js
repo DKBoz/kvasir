@@ -91,12 +91,23 @@ export default function LearnPage() {
       </div>
 
       {/* Streak banner */}
-      {profile?.streak_current > 0 && (
-        <div className="animate-slide-up" style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", borderRadius: "var(--radius-md)", background: "var(--color-bg-card)", border: "1px solid var(--color-border)", marginBottom: "24px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-          <span style={{ fontSize: "24px" }}>🔥</span>
-          <span style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-text)" }}>{profile.streak_current} day streak!</span>
+      <div className="animate-slide-up" style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", borderRadius: "var(--radius-md)", background: "var(--color-bg-card)", border: "1px solid var(--color-border)", marginBottom: "24px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+        <span style={{ fontSize: "24px" }}>{profile?.streak_current > 0 ? "🔥" : "💪"}</span>
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-text)" }}>
+            {profile?.streak_current > 0
+              ? `${profile.streak_current} day streak!`
+              : "Start your streak today!"}
+          </span>
+          {profile?.streak_longest > 0 && profile?.streak_current !== profile?.streak_longest && (
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)", marginLeft: "8px" }}>
+              Best: {profile.streak_longest}
+            </span>
+          )}
         </div>
-      )}
+        {profile?.streak_current >= 7 && <span style={{ fontSize: "20px" }}>⚡</span>}
+        {profile?.streak_current >= 30 && <span style={{ fontSize: "20px" }}>👑</span>}
+      </div>
 
       {/* Skill Tree */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0px" }}>

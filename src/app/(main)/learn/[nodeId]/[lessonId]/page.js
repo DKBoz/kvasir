@@ -150,9 +150,62 @@ export default function LessonPage() {
   }
 
   async function saveLessonComplete() {
-    setCompleted(true); speak("Lesson complete!");
-    await supabase.from("user_progress").upsert({ user_id: profile.id, lesson_id: lessonId, node_id: nodeId, completed: true, score, xp_earned: lesson.xp_reward, tokens_earned: lesson.token_reward, completed_at: new Date().toISOString() }, { onConflict: "user_id,lesson_id" });
-    await updateProfile({ xp: (profile.xp || 0) + lesson.xp_reward, tokens: (profile.tokens || 0) + lesson.token_reward });
+    setCompleted(true);
+    speak("Lesson complete!");
+
+    await supabase.from("user_progress").upsert(
+      { user_id: profile.id, lesson_id: lessonId, node_id: nodeId, completed: true, score, xp_earned: lesson.xp_reward, tokens_earned: lesson.token_reward, completed_at: new Date().toISOString() },
+      { onConflict: "user_id,lesson_id" }
+    );
+
+    const newXp = (profile.xp || 0) + lesson.xp_reward;
+    const newTokens = (profile.tokens || 0) + lesson.token_reward;
+    const today = new Date().toISOString().split("T")[0];
+    const lastActive = profile.last_active_date;
+    let newStreak = profile.streak_current || 0;
+    let newLongest = profile.streak_longest || 0;
+
+    if (lastActive !== today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      if (lastActive === yesterdayStr) {
+        newStreak = newStreak + 1;
+      } else {
+        newStreak = 1;
+      }
+      if (newStreak > newLongest) newLongest = newStreak;
+    }
+
+    const { data: existingStreak } = await supabase
+      .from("streaks")
+      .select("*")
+      .eq("user_id", profile.id)
+      .eq("date", today)
+      .single();
+
+    if (existingStreak) {
+      await supabase.from("streaks").update({
+        lessons_completed: existingStreak.lessons_completed + 1,
+        xp_earned: existingStreak.xp_earned + lesson.xp_reward,
+      }).eq("id", existingStreak.id);
+    } else {
+      await supabase.from("streaks").insert({
+        user_id: profile.id,
+        date: today,
+        lessons_completed: 1,
+        xp_earned: lesson.xp_reward,
+      });
+    }
+
+    await updateProfile({
+      xp: newXp,
+      tokens: newTokens,
+      streak_current: newStreak,
+      streak_longest: newLongest,
+      last_active_date: today,
+    });
   }
 
   function handleMC(idx, correct, ex) {
