@@ -11,44 +11,46 @@ export default function LearnPage() {
   const [progress, setProgress] = useState({});
   const [lessonCounts, setLessonCounts] = useState({});
   const [loading, setLoading] = useState(true);
+  const [adminTrack, setAdminTrack] = useState(null);
+  const [adminLevel, setAdminLevel] = useState(null);
   const router = useRouter();
+
+  const isAdmin = profile?.is_admin === true;
+
+  const activeTrack = isAdmin ? (adminTrack || profile?.age_track) : profile?.age_track;
+  const activeLevel = isAdmin ? (adminLevel || profile?.current_level) : profile?.current_level;
 
   useEffect(() => {
     if (profile?.age_track && profile?.current_level) {
       fetchData();
     }
-  }, [profile]);
+  }, [profile, adminTrack, adminLevel]);
 
   async function fetchData() {
-    // Fetch nodes
     const { data: nodeData } = await supabase
       .from("skill_nodes")
       .select("*")
-      .eq("age_track", profile.age_track)
-      .eq("level", profile.current_level)
+      .eq("age_track", activeTrack)
+      .eq("level", activeLevel)
       .order("sort_order");
 
-    // Fetch all lessons for these nodes to get counts
     const nodeIds = (nodeData || []).map((n) => n.id);
     const { data: lessonData } = await supabase
       .from("lessons")
       .select("id, node_id")
       .in("node_id", nodeIds);
 
-    // Build lesson count per node
     const counts = {};
     (lessonData || []).forEach((l) => {
       counts[l.node_id] = (counts[l.node_id] || 0) + 1;
     });
 
-    // Fetch user progress
     const { data: progressData } = await supabase
       .from("user_progress")
       .select("node_id, lesson_id, completed")
       .eq("user_id", profile.id)
       .eq("completed", true);
 
-    // Build completed count per node
     const completedPerNode = {};
     (progressData || []).forEach((p) => {
       completedPerNode[p.node_id] = (completedPerNode[p.node_id] || 0) + 1;
@@ -68,6 +70,9 @@ export default function LearnPage() {
     );
   }
 
+  const tracks = ["kids", "teens", "adults"];
+  const levels = ["pre-a1", "a1", "a2", "b1", "b2", "c1", "c2"];
+
   return (
     <div style={{ padding: "24px", paddingBottom: "100px" }}>
       {/* Header */}
@@ -75,7 +80,8 @@ export default function LearnPage() {
         <div>
           <h1 style={{ fontSize: "24px", fontWeight: 700, color: "var(--color-text)" }}>Skill Tree</h1>
           <p style={{ fontSize: "14px", color: "var(--color-text-light)", marginTop: "4px" }}>
-            {profile?.current_level?.toUpperCase()} · {profile?.age_track}
+            {activeLevel?.toUpperCase()} · {activeTrack}
+            {isAdmin && <span style={{ marginLeft: "8px", fontSize: "12px", background: "var(--color-primary)", color: "#fff", padding: "2px 8px", borderRadius: "var(--radius-full)", fontWeight: 700 }}>ADMIN</span>}
           </p>
         </div>
         <div style={{ display: "flex", gap: "12px" }}>
@@ -89,6 +95,69 @@ export default function LearnPage() {
           </div>
         </div>
       </div>
+
+      {/* Admin switcher */}
+      {isAdmin && (
+        <div className="animate-fade-in" style={{ marginBottom: "24px", padding: "16px", borderRadius: "var(--radius-md)", background: "var(--color-bg-card)", border: "2px solid var(--color-primary)", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+          <p style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-primary)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Admin — Browse Content</p>
+
+          {/* Track selector */}
+          <div style={{ marginBottom: "10px" }}>
+            <p style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "6px" }}>Track</p>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {tracks.map((track) => (
+                <button
+                  key={track}
+                  onClick={() => { setAdminTrack(track); setLoading(true); }}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    border: "2px solid",
+                    borderColor: activeTrack === track ? "var(--color-primary)" : "var(--color-border)",
+                    background: activeTrack === track ? "var(--color-primary)" : "var(--color-bg-card)",
+                    color: activeTrack === track ? "#fff" : "var(--color-text)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textTransform: "capitalize",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {track}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Level selector */}
+          <div>
+            <p style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "6px" }}>Level</p>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {levels.map((level) => (
+                <button
+                  key={level}
+                  onClick={() => { setAdminLevel(level); setLoading(true); }}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    border: "2px solid",
+                    borderColor: activeLevel === level ? "var(--color-primary)" : "var(--color-border)",
+                    background: activeLevel === level ? "var(--color-primary)" : "var(--color-bg-card)",
+                    color: activeLevel === level ? "#fff" : "var(--color-text)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textTransform: "uppercase",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Streak banner */}
       <div className="animate-slide-up" style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", borderRadius: "var(--radius-md)", background: "var(--color-bg-card)", border: "1px solid var(--color-border)", marginBottom: "24px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
@@ -111,54 +180,56 @@ export default function LearnPage() {
 
       {/* Skill Tree */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0px" }}>
-        {nodes.map((node, index) => {
-          const isEven = index % 2 === 0;
-          const total = lessonCounts[node.id] || 0;
-          const done = progress[node.id] || 0;
-          const isComplete = total > 0 && done >= total;
-          const hasProgress = done > 0 && !isComplete;
+        {nodes.length === 0 ? (
+          <div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>
+            <p style={{ fontSize: "32px", marginBottom: "12px" }}>🚧</p>
+            <p style={{ fontSize: "16px", fontWeight: 600 }}>No content yet</p>
+            <p style={{ fontSize: "14px", marginTop: "4px" }}>This track/level hasn't been seeded yet.</p>
+          </div>
+        ) : (
+          nodes.map((node, index) => {
+            const isEven = index % 2 === 0;
+            const total = lessonCounts[node.id] || 0;
+            const done = progress[node.id] || 0;
+            const isComplete = total > 0 && done >= total;
+            const hasProgress = done > 0 && !isComplete;
 
-          return (
-            <div key={node.id}>
-              {/* Connector */}
-              {index > 0 && (
-                <div style={{ width: "3px", height: "32px", background: isComplete || hasProgress ? "var(--color-primary-light)" : "var(--color-border)", margin: "0 auto", transition: "background 0.3s ease" }} />
-              )}
-
-              {/* Node */}
-              <button
-                onClick={() => router.push(`/learn/${node.id}`)}
-                className={index === 0 ? "animate-slide-up" : ""}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "16px",
-                  padding: "16px 20px",
-                  borderRadius: "var(--radius-lg)",
-                  border: isComplete
-                    ? "2px solid var(--color-success)"
-                    : hasProgress
-                    ? "2px solid var(--color-primary)"
-                    : "2px solid var(--color-border)",
-                  background: "var(--color-bg-card)",
-                  cursor: "pointer",
-                  width: "280px",
-                  textAlign: "left",
-                  transition: "all 0.2s ease",
-                  transform: `translateX(${isEven ? "-20px" : "20px"})`,
-                  boxShadow: isComplete
-                    ? "0 4px 12px rgba(0, 184, 148, 0.15)"
-                    : hasProgress
-                    ? "0 4px 12px rgba(108, 92, 231, 0.15)"
-                    : "0 2px 8px rgba(0,0,0,0.04)",
-                  animationDelay: `${index * 0.08}s`,
-                  animationFillMode: "both",
-                }}
-              >
-                {/* Icon */}
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  <div
-                    style={{
+            return (
+              <div key={node.id}>
+                {index > 0 && (
+                  <div style={{ width: "3px", height: "32px", background: isComplete || hasProgress ? "var(--color-primary-light)" : "var(--color-border)", margin: "0 auto", transition: "background 0.3s ease" }} />
+                )}
+                <button
+                  onClick={() => router.push(`/learn/${node.id}`)}
+                  className={index === 0 ? "animate-slide-up" : ""}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "16px",
+                    padding: "16px 20px",
+                    borderRadius: "var(--radius-lg)",
+                    border: isComplete
+                      ? "2px solid var(--color-success)"
+                      : hasProgress
+                      ? "2px solid var(--color-primary)"
+                      : "2px solid var(--color-border)",
+                    background: "var(--color-bg-card)",
+                    cursor: "pointer",
+                    width: "280px",
+                    textAlign: "left",
+                    transition: "all 0.2s ease",
+                    transform: `translateX(${isEven ? "-20px" : "20px"})`,
+                    boxShadow: isComplete
+                      ? "0 4px 12px rgba(0, 184, 148, 0.15)"
+                      : hasProgress
+                      ? "0 4px 12px rgba(108, 92, 231, 0.15)"
+                      : "0 2px 8px rgba(0,0,0,0.04)",
+                    animationDelay: `${index * 0.08}s`,
+                    animationFillMode: "both",
+                  }}
+                >
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <div style={{
                       width: "48px",
                       height: "48px",
                       borderRadius: "50%",
@@ -172,66 +243,28 @@ export default function LearnPage() {
                       justifyContent: "center",
                       fontSize: "24px",
                       transition: "all 0.3s ease",
-                    }}
-                  >
-                    {isComplete ? "✓" : node.icon}
+                    }}>
+                      {isComplete ? "✓" : node.icon}
+                    </div>
+                    {hasProgress && (
+                      <svg width="56" height="56" style={{ position: "absolute", top: "-4px", left: "-4px" }}>
+                        <circle cx="28" cy="28" r="25" fill="none" stroke="var(--color-border)" strokeWidth="3" />
+                        <circle cx="28" cy="28" r="25" fill="none" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${(done / total) * 157} 157`} transform="rotate(-90 28 28)" style={{ transition: "stroke-dasharray 0.5s ease" }} />
+                      </svg>
+                    )}
                   </div>
-
-                  {/* Progress ring */}
-                  {hasProgress && (
-                    <svg
-                      width="56"
-                      height="56"
-                      style={{
-                        position: "absolute",
-                        top: "-4px",
-                        left: "-4px",
-                      }}
-                    >
-                      <circle
-                        cx="28"
-                        cy="28"
-                        r="25"
-                        fill="none"
-                        stroke="var(--color-border)"
-                        strokeWidth="3"
-                      />
-                      <circle
-                        cx="28"
-                        cy="28"
-                        r="25"
-                        fill="none"
-                        stroke="var(--color-primary)"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeDasharray={`${(done / total) * 157} 157`}
-                        transform="rotate(-90 28 28)"
-                        style={{ transition: "stroke-dasharray 0.5s ease" }}
-                      />
-                    </svg>
-                  )}
-                </div>
-
-                {/* Text */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-text)" }}>
-                    {node.title}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-text)" }}>{node.title}</div>
+                    <div style={{ fontSize: "13px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                      {isComplete ? "Complete! ⭐" : hasProgress ? `${done}/${total} lessons` : node.description}
+                    </div>
                   </div>
-                  <div style={{ fontSize: "13px", color: "var(--color-text-muted)", marginTop: "2px" }}>
-                    {isComplete
-                      ? "Complete! ⭐"
-                      : hasProgress
-                      ? `${done}/${total} lessons`
-                      : node.description}
-                  </div>
-                </div>
-
-                {/* Chevron */}
-                <span style={{ color: "var(--color-text-muted)", fontSize: "18px" }}>→</span>
-              </button>
-            </div>
-          );
-        })}
+                  <span style={{ color: "var(--color-text-muted)", fontSize: "18px" }}>→</span>
+                </button>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
