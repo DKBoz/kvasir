@@ -36,6 +36,10 @@ export default function LessonPage() {
   const [shakeWrong, setShakeWrong] = useState(false);
   const timerRef = useRef(null);
 
+  function isImageUrl(value) {
+    return value && (value.startsWith("http") || value.startsWith("/"));
+  }
+
   function speak(text) {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
@@ -309,7 +313,11 @@ export default function LessonPage() {
     return (
       <LessonShell title={currentStage.title} progress={progressPercent} stageLabel="Present" onClose={() => router.push(`/learn/${nodeId}`)}>
         <div key={animKey} className="animate-slide-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px", padding: "40px 24px" }}>
-          <div className="animate-bounce-in" style={{ fontSize: "80px" }}>{item.image}</div>
+          <div className="animate-bounce-in">
+            {isImageUrl(item.image)
+              ? <img src={item.image} alt="" style={{ width: "100%", maxWidth: "280px", borderRadius: "var(--radius-lg)", objectFit: "cover" }} />
+              : <span style={{ fontSize: "80px" }}>{item.image}</span>}
+          </div>
           <div style={{ fontSize: "48px", fontWeight: 700, color: "var(--color-primary)" }}>{item.letter}</div>
           <div style={{ fontSize: "24px", fontWeight: 600, color: "var(--color-text)" }}>{item.word}</div>
           {item.hint_l1?.tr && <L1Hint item={item} />}
@@ -328,7 +336,13 @@ export default function LessonPage() {
       <LessonShell title={currentStage.title} progress={progressPercent} stageLabel="Examples" onClose={() => router.push(`/learn/${nodeId}`)}>
         <div key={animKey} className="animate-slide-in" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", padding: "24px" }}>
           <VisualScene key={sceneKey} scene={item.scene} size="large" />
-          {item.prompt_image && <div className="animate-bounce-in" style={{ fontSize: "48px", textAlign: "center" }}>{item.prompt_image}</div>}
+          {item.prompt_image && (
+            <div className="animate-bounce-in" style={{ textAlign: "center" }}>
+              {isImageUrl(item.prompt_image)
+                ? <img src={item.prompt_image} alt="" style={{ width: "100%", maxWidth: "280px", borderRadius: "var(--radius-lg)", objectFit: "cover" }} />
+                : <span style={{ fontSize: "48px" }}>{item.prompt_image}</span>}
+            </div>
+          )}
           <div className="animate-slide-up" style={{ fontSize: "32px", fontWeight: 700, color: "var(--color-primary)", textAlign: "center" }}>{item.answer}</div>
           {item.hint_l1?.tr && <L1Hint item={item} />}
           <button onClick={() => speak(item.audio || item.answer)} style={{ width: "56px", height: "56px", borderRadius: "50%", border: "2px solid var(--color-primary)", background: "var(--color-bg-card)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px" }}>🔊</button>
